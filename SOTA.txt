@@ -1,0 +1,52 @@
+我查到了这项赛题的原始出处——附件就是下面这篇论文的公开数据。先给结论，再给分类清单。
+0. 最关键的一篇（必读、必引）
+Schreurs et al., “Predicting and improving complex beer flavor through machine learning”, Nature Communications 15:2368 (2024)
+🔗 https://www.nature.com/articles/s41467-024-46346-0
+（PubMed：https://pubmed.ncbi.nlm.nih.gov/38531860/）
+这篇与赛题数据完全对应，不是“相关文献”，而是数据来源：
+论文	赛题附件
+250 款商用啤酒、22 种风格	1.csv 正好 250×22 类
+226 项化学指标（含 5 个派生综合量）	1.csv 231 列（含 5 派生）
+50 个感官描述符、16 人训练品评组	4.csv 50 维
+18 万条 RateBeer 评论	7.csv 186 个描述符
+Grading 0–6 品评卡	3.xlsx 12 张评分卡
+它做了什么（可直接当 baseline）：10 个模型对比——LR、Lasso、PLSR、AdaBoost、ExtraTrees、GBR、RF、XGBoost、SVR、ANN；按啤酒风格分层划分训练/测试；多输出回归；GBR 最优（R² 最高 0.75）；用 MDI + SHAP 找关键化合物，发现 ethyl acetate 是第一驱动因子。这篇论文的结论直接决定你问题一的技术选型：树模型是必须跑的基线，PLS 是可解释性对照。
+数据与代码（强烈建议下下来对照）
+- Zenodo 官方数据+脚本：https://zenodo.org/records/10653704
+- 赛题里给的 Kaggle 数据集：https://www.kaggle.com/datasets/stephenpolozoff/top-beer-information
+⚠️ 注意：引用它可以，照抄它会丢分。这篇论文的三个薄弱点正好是赛题区分度所在：① 只做了一次分层划分，没有重复交叉验证；② 重要性只报 MDI/SHAP，没有 bootstrap 稳定性（作者自己也承认乙醇的重要性被无醇啤酒拉高了）；③ 完全没有“生成/迁移”部分。你在问题二做 π 入选频率 + Jaccard，在问题三做约束迁移，就是明确站在它之上，写论文时可以直接这么讲。
+1. 问题一：多输出回归 / 有序回归 / 分级
+资源	用途
+Grinsztajn et al., Why do tree-based models still outperform deep learning on tabular data? https://arxiv.org/abs/2207.08815	证明“250×231 的小表数据用 GBDT 而非深度网络”是有文献支撑的，写模型选择理由时引用
+Korneva & Blockeel, Towards better evaluation of multi-target regression（ECML PKDD 2020）https://link.springer.com/chapter/10.1007/978-3-030-65965-3_23	论文里“多输出模型 + 逐维平均排名”的评价方式出处，问题一的多维评价可直接沿用
+UCLA 有序 logistic 回归教程 https://stats.oarc.ucla.edu/r/dae/ordinal-logistic-regression/	proportional odds 的实操与平行线检验，配 statsmodels OrderedModel
+Frank Harrell, Proportional odds model https://www.fharrell.com/post/pop/	平行线假设不成立时怎么办（partial PO / 相邻类别 logit），比教科书讲得实用
+QWK 作为有序一致性指标 https://educationaldatamining.org/EDM2023/proceedings/2023.EDM-long-papers.9/index.html	你论文里报 QWK 而不是 accuracy 的依据
+2. 问题二：相关网络 + 重要性 + 稳定性
+资源	用途
+Langfelder & Horvath, WGCNA（2008）https://pmc.ncbi.nlm.nih.gov/articles/PMC2631488/	“把相关矩阵做成带模块的网络”这一套方法学的经典出处，问题二的图+模块可直接借它的语言（soft threshold、module、hub）
+Meinshausen & Bühlmann, Stability Selection（JRSS-B 2010）https://rss.onlinelibrary.wiley.com/doi/10.1111/j.1467-9868.2010.00740.x	你方案里 bootstrap 入选频率 π 的理论依据，比“跑 100 次看排名”更有说服力
+可直接调用的实现 https://github.com/scikit-learn-contrib/stability-selection	省一天代码量
+Nogueira et al., On the Stability of Feature Selection Algorithms（JMLR 2018）https://jmlr.csail.mit.edu/papers/volume18/17-514/17-514.pdf	Jaccard / Kuncheva 稳定性指数的标准定义，问题二的跨模型 Jaccard 引这篇
+Au et al., Grouped feature importance（DMKD 2022）https://link.springer.com/article/10.1007/s10618-022-00840-5	共线化合物必须整组置换的方法出处，直接支撑你的“模块内条件置换”
+Altmann et al., Permutation importance: a corrected feature importance（Bioinformatics 2010）https://academic.oup.com/bioinformatics/article/26/10/1340/193348	为什么普通置换重要性在相关特征上会失真
+SHAP 原始方法（Nature MI 2020，论文同款）https://www.nature.com/articles/s42256-019-0138-9	作为第三方交叉验证；但要在论文里写明“SHAP 是旁证，不作独立证据”
+3. 问题三：条件生成 + 约束迁移（这块没有啤酒领域的 SOTA，要跨领域借）
+资源	用途
+Xu et al., CTGAN（NeurIPS 2019）https://arxiv.org/abs/1907.00503 ，代码 https://github.com/sdv-dev/CTGAN	表格数据条件生成的标准做法（按类别条件化 + mode-specific normalization），对应你“按 style 生成化合物谱”
+Al-Sarayreh et al., Inverse design and AI/deep generative networks in food（2023）https://www.sciencedirect.com/science/article/pii/S0924224423001693	食品领域逆设计综述，问题三“给定目标反推配方”的最佳引文，比硬套 GAN 更贴题
+Compositional Generative Inverse Design（ICLR 2024）https://cs.stanford.edu/people/jure/pubs/compositional-iclr24.pdf	把逆设计写成“生成 + 约束优化”的范式，和你 min f(u′) s.t. 缺陷约束的结构一致
+AI and the Generative Science of Food（2026 综述）https://arxiv.org/html/2607.09529v1	风味生成、配料替换的最新综述，写“研究现状”时好用
+Predicting multiple taste sensations with a multiobjective ML method（npj Sci Food 2024）https://www.nature.com/articles/s41538-024-00287-6	多目标（多感官）预测，问题三“画像”与“迁移”的多目标视角
+4. 数据侧：缺失值（你只有 73/57750，但方法要写对）
+资源	用途
+Do et al., Characterization of missing values in untargeted MS-based metabolomics（2018）https://pmc.ncbi.nlm.nih.gov/articles/PMC6153696/	代谢组学缺失的三类成因 + 推荐 KNN 插补，正好对应你“NA / 未检出 / 结构缺失”三分法
+Krutkin et al., To impute or not to impute in untargeted metabolomics（2024）https://www.biorxiv.org/content/10.1101/2024.10.28.620738v1.full-text	什么时候不该插补（未检出≠缺失），给你“保留指示变量 + 敏感性分析”的做法撑腰
+5. 怎么用这批文献（写作策略）
+1. 第 2 章“数据来源”：明确写“数据来自 Schreurs et al. 2024 的公开补充材料”，并指出赛题与论文的三处差异（Pearson/Spearman、226 vs 250、评分卡空白）。这是加分而不是减分。
+2. 第 5 章“问题一”：把 GBR、PLSR、Lasso 作为 baseline 复现（论文 Table 1 有参照值），再叠加你的有序回归 + 多重插补取众数。能报出“我们复现了 R²≈0.6–0.75 量级，并额外给出 QWK 与等级熵”就很强。
+3. 第 6 章“问题二”：先引 WGCNA 讲图，再引 Stability Selection + Grouped importance 讲“为什么我们的 Top-3 比原文的 MDI/SHAP 更可信”——这是全文最容易写出差异的一段。
+4. 第 7 章“问题三”：老实写“啤酒领域尚无公开的条件生成基准，本文借鉴表格条件生成（CTGAN）与食品逆设计（Al-Sarayreh 2023）的框架”，然后强调你的缺陷逐项不恶化约束是自创的贡献点。
+继续深挖的检索词（Google Scholar / arXiv）：
+beer flavor machine learning、multi-target regression sensory、stability selection feature importance、conditional tabular generation、inverse design food formulation、constrained optimization generative model chemistry、odor threshold OAV prediction
+需要我把这些文献按你论文的 8 章结构做一张“引用位置对照表”（哪一段引哪篇、原话怎么表述），或者把 Nature 那篇的 Table 1/Supplementary 数值整理成 baseline 对照表，我可以接着做。
